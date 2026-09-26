@@ -1,90 +1,57 @@
 # MA-Harness
 
-`memory_harness` is a **Stage-A Python package for deterministic memory- and
-plan-reuse contracts**. It gives an agent harness a durable, auditable memory
-of tasks, plans, decisions, and outcomes, plus a bounded "prepare once, dispatch
-at most once" flow that reuses prior work without ever guessing.
+A complete orchestration and memory system for teams of coding agents.
 
-Its guiding principle is **determinism and fail-closed safety**: the same inputs
-always yield the same decision, every side effect is recorded before it happens,
-and any capability that cannot be authorized is refused rather than approximated.
+### Orchestrator Harness
 
-## Features
+- **Fresh epoch per campaign** — ROOT splits the work into parallel lanes.
+- **Isolated lanes** — each lane gets its own Git branch, worktree, task card,
+  and provider session, so workers never interfere.
+- **Super-cache** — stages the shared tools, hooks, skills, and provider config
+  every worker needs.
+- **Persistent monitor** — tracks processes, results, leases, and lane health.
+- **Live coordination** — workers report progress or request help via queue
+  notifications that ROOT answers without restarting sessions.
+- **Full result lifecycle** — evidence tied to an exact lane and run, a reviewer
+  verdict (pass/fail/blocked) separate from ROOT's accept/reject, plus resume,
+  correction, retirement, and identity-exact cleanup.
 
-- **Canonical records.** Task, plan, decision, dispatch, operation, and outcome
-  objects with stable content hashes, so identical work is recognized and reused
-  instead of recomputed.
-- **Integrity-bound execution envelope.** A parent envelope binds one integrity
-  over the task, objective, repository base, accepted plan, and rendered
-  context — tampering or drift is detected, not silently accepted.
-- **Durable SQLite storage.** Decisions, operations, and outcomes persist in a
-  local store that is the single source of truth for provenance and approval
-  evidence.
-- **Isolated snapshot &amp; restore.** `snapshot.SnapshotService` captures a whole
-  memory store into a verifiable artifact and restores it into a fresh path,
-  checking every integrity and compatibility fact before installing — it never
-  merges, overwrites, or replays work.
-- **Bounded preparation, one safe dispatch.** `preparation.PreparationService`
-  resolves the exact state and runs a single fault-isolated search before any
-  optional call; `runtime.MemoryRuntime` persists launch intent before dispatch
-  and records the observed invocation after, guaranteeing at-most-once execution
-  with explicit reconciliation of ambiguous effects.
-- **Plan reuse with safe fallback.** Versioned local templates support direct
-  fill or a bounded adaptation draft, with a clean fresh-plan fallback when no
-  prior work fits.
-- **Privacy guards.** Control credentials and known synthetic secrets are kept
-  out of query payloads and persisted records by design.
-- **Gated optional integrations.** A reviewed-experience adapter (EverOS) and a
-  trusted-procedure vector-search adapter (MongoDB Atlas) are available but fully
-  optional — absent installs skip honestly rather than degrade.
+### Memory feedback loop
 
-It deliberately does **not** provide a second launcher, scheduler, review
-system, evidence ledger, secret manager, learned selector, or benchmark runner.
+- **Trajectories** — each reviewed task is recorded as a trajectory.
+- **EverOS** — turns reviewed experience into historical cases and reusable skills.
+- **Trust system** — verifies skill origin and promotes approved skills into
+  **trusted procedures**: immutable versioned records with permissions,
+  applicability rules, current-version status, and revocation.
+- **Shared discovery** — trusted procedures publish to **MongoDB Atlas** and are
+  found via real Vector Search.
+- **Task flow** — a new task searches EverOS (local experience) and Atlas (shared
+  procedures), validates every result, builds a safe task-specific plan and worker
+  context, launches a real coding worker, and feeds the reviewed outcome back in.
+- **Fully optional** — with every memory feature disabled, the harness still
+  works normally.
 
-## Repository layout
+### Benchmark
 
-| Path | Contents |
-|------|----------|
-| `src/memory_harness/` | The core package (the deliverable). |
-| `tests/` | `unittest` suites — `tests/local/` (dependency-light) and `tests/live/` (network, env-gated). |
-| `harness/` | Bundled orchestrator harness, tooling, docs, and vendored deps (`everos`, `langchain-mongodb`). |
-| `.agent/ .agents/ .claude/ .codex/ .qwen/` | Portable agent/editor config (see `workspace-aid/README.md`). |
-| `.secrets/` | Local credentials — **gitignored, never committed**. |
+- **SWE-Marathon v1.1 (ZSTD)** — 47.3% above the official *high* average and 7.3%
+  above the official *xhigh* average, using 91% fewer uncached tokens than xhigh
+  (11.14× lower), though runs took longer.
 
-## Requirements
+## `memory_harness` package
 
-- **Python 3.11+** for the core package (`pyproject.toml`).
-- **Python 3.12+** additionally for the optional `everos` extra.
+This repo's core deliverable is `src/memory_harness/` — the Stage-A Python
+package implementing the deterministic memory and plan-reuse contracts. Its
+guiding principle is **determinism and fail-closed safety**: the same inputs
+yield the same decision, side effects are recorded before they happen, and any
+capability that cannot be authorized is refused rather than approximated.
 
-## Install
-
-```bash
-python3 -m venv .venv
-source .venv/bin/activate          # Windows: .venv\Scripts\activate
-
-pip install -e .                   # core package
-```
-
-The core package is dependency-light. Optional integrations ship as extras
-(`.[atlas]`, `.[everos]`); see `src/memory_harness/README.md` for their setup.
-
-## Running the tests
-
-Tests use the standard-library `unittest` runner.
-
-```bash
-# Dependency-light local suite (optional integrations skip themselves cleanly)
-python -m unittest discover -s tests/local -p 'test_*.py'
-
-# Everything discoverable
-python -m unittest discover -s tests -p 'test_*.py'
-```
-
-Live suites under `tests/live/` are **opt-in** and skip unless their environment
-gate is set (e.g. `MEMORY_HARNESS_RUN_LIVE_ATLAS=1`).
-
-## Security
-
-Credentials live only in the gitignored `.secrets/` directory and are never
-committed. Build artifacts (`*.egg-info/`, `.venv/`, `__pycache__/`) are ignored
-and regenerate on demand.
+- **Canonical records** — task, plan, decision, dispatch, operation, and outcome
+  objects with stable content hashes, so identical work is reused, not recomputed.
+- **Bounded prepare, one safe dispatch** — a single fault-isolated search before
+  any optional call, then at-most-once execution with explicit reconciliation.
+- **Durable SQLite store** — the single source of truth for provenance and
+  approval evidence, with verifiable snapshot/restore.
+- **Privacy guards** — credentials and known secrets are kept out of query
+  payloads and persisted records.
+- **Gated integrations** — EverOS (reviewed experience) and MongoDB Atlas
+  (trusted-procedure vector search) are optional and skip cleanly when absent.

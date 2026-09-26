@@ -30,7 +30,7 @@ from .epochs import (
 )
 from .lanes import LANE_SCHEMA, write_lane
 from . import memory_handoff
-from .records import atomic_write_json
+from .records import atomic_write_bytes, atomic_write_json
 
 TASK_CARD_SCHEMA = "project-task-card/v1"
 INVOCATION_SCHEMA = "controller-invocation/v1"
@@ -538,6 +538,86 @@ def _install_managed_material(
     _write_worker_binding(worktree, rt, lane_id, run_id)
 
 
+def _install_codex_worker_isolation(
+    worktree: Path, harness_root: Path, root_workspace: Path
+) -> None:
+    """Install the benchmark worker profile after the provider overlay."""
+    import os
+    import tomllib
+
+    config_path = worktree / ".codex" / "config.toml"
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    existing = config_path.read_text(encoding="utf-8") if config_path.exists() else ""
+    try:
+        parsed = tomllib.loads(existing)
+    except tomllib.TOMLDecodeError as exc:
+        raise BootstrapError(
+            BOOTSTRAP_CACHE_COLLISION, f"invalid Codex worker config: {exc}"
+        ) from exc
+    if (
+        "sandbox_mode" in parsed
+        or "default_permissions" in parsed
+        or "worker-isolated" in parsed.get("permissions", {})
+    ):
+        raise BootstrapError(
+            BOOTSTRAP_CACHE_COLLISION,
+            "Codex worker config conflicts with the required isolation profile",
+        )
+
+    root_workspace = root_workspace.resolve()
+    runs_root = root_workspace.parent
+    host_workspace = runs_root.parent
+    codex_home = Path(os.environ.get("CODEX_HOME", Path.home() / ".codex")).resolve()
+    denied = {
+        codex_home,
+        (Path.home() / ".codex").resolve(),
+        harness_root.resolve(),
+        harness_root.resolve().parent,
+        root_workspace / ".harness-runtime" / "operator-only",
+    }
+    denied.update(
+        (host_workspace / name).resolve()
+        for name in (
+            ".secrets",
+            "benchmarks",
+            "Codex_Claude_Setup",
+            "product",
+            "results",
+        )
+    )
+    if runs_root.is_dir():
+        denied.update(
+            sibling.resolve()
+            for sibling in runs_root.iterdir()
+            if sibling.is_dir() and sibling.resolve() != root_workspace
+        )
+
+    lines = [
+        "# Harness-owned worker read isolation; regenerated for every lane.",
+        "[permissions.worker-isolated]",
+        'extends = ":workspace"',
+        "[permissions.worker-isolated.filesystem]",
+    ]
+    lines.extend(
+        f'{json.dumps(str(path))} = "deny"'
+        for path in sorted(denied, key=lambda value: str(value).casefold())
+    )
+    lines.extend(
+        [
+            '[permissions.worker-isolated.filesystem.":workspace_roots"]',
+            '"." = "write"',
+            "",
+        ]
+    )
+    rendered = (
+        'default_permissions = "worker-isolated"\n'
+        + existing.rstrip()
+        + "\n"
+        + "\n".join(lines)
+    )
+    atomic_write_bytes(config_path, rendered.encode("utf-8"))
+
+
 def _managed_payload(harness_root: Path, rt: Path, provider_id: str) -> Path:
     """Fail closed when the installed tree differs from setup's exact plan."""
     from .setup import (
@@ -862,6 +942,10 @@ def run_bootstrap(
                 base_overlay,
                 worktree_path,
                 exclude=PLAIN_EXCLUDED_HELPERS,
+            )
+        if provider == "codex":
+            _install_codex_worker_isolation(
+                worktree_path, harness_root, config.root_workspace
             )
         receipt = {
             "schema": OVERLAY_RECEIPT_SCHEMA,

@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import shutil
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -1089,6 +1090,17 @@ class V2MaterializationTests(unittest.TestCase):
             (worktree / ".agent-workspace" / "overlay-receipt.json").read_text(encoding="utf-8")
         )
         self.assertEqual("composed-payloads/codex", receipt["provider_payload"])
+        codex_config = tomllib.loads(
+            (worktree / ".codex" / "config.toml").read_text(encoding="utf-8")
+        )
+        self.assertEqual("worker-isolated", codex_config["default_permissions"])
+        profile = codex_config["permissions"]["worker-isolated"]
+        self.assertEqual(":workspace", profile["extends"])
+        self.assertEqual("write", profile["filesystem"][":workspace_roots"]["."])
+        self.assertEqual(
+            "deny",
+            profile["filesystem"][str((Path.home() / ".codex").resolve())],
+        )
 
     def test_missing_or_changed_installed_composition_blocks_managed_bootstrap(self) -> None:
         for failure in ("missing", "changed"):
@@ -1356,7 +1368,10 @@ class V2MaterializationTests(unittest.TestCase):
         self.assertFalse((agent_workspace / "lane-queue.py").exists())
         self.assertFalse((agent_workspace / "manager-notify.py").exists())
         self.assertTrue((agent_workspace / "result-stop-check.py").is_file())
-        self.assertFalse((worktree / ".codex").exists())
+        config = tomllib.loads(
+            (worktree / ".codex" / "config.toml").read_text(encoding="utf-8")
+        )
+        self.assertEqual("worker-isolated", config["default_permissions"])
         self.assertFalse((worktree / ".custom").exists())
 
     def test_managed_bootstrap_preserves_validated_task_card_copy(self) -> None:
