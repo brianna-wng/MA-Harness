@@ -1,3 +1,6 @@
+# Local credentials and secrets; never committed or pushed.
+.secrets/
+
 # Disposable output from the portable agent utilities.
 .agent-runtime/
 .harness-runtime/
