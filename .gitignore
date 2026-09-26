@@ -9,6 +9,7 @@
 __pycache__/
 *.pyc
 *.pyo
+*.egg-info/
 
 # Optional local verification overrides may contain machine-specific commands.
 .agent/verify.toml
